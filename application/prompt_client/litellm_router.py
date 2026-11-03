@@ -21,13 +21,33 @@ from application.prompt_client.llm_error_utils import is_rate_limit_error
 LlmFn = Callable[[str, str], str]
 
 
+DEFAULT_MAX_RETRIES = 2
+DEFAULT_RETRY_SLEEP_SECONDS = 15
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read an integer env var, falling back to its default if invalid."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not an integer; falling back to default %d",
+            name,
+            raw,
+            default,
+        )
+        return default
+
+
 def retry_policy() -> tuple[int, int]:
     """Return (max_retries, sleep_seconds) from CRE_LLM_* env vars."""
     return (
-        int(os.environ.get("CRE_LLM_MAX_RETRIES", "2")),
-        int(os.environ.get("CRE_LLM_RETRY_SLEEP_SECONDS", "15")),
+        _env_int("CRE_LLM_MAX_RETRIES", DEFAULT_MAX_RETRIES),
+        _env_int("CRE_LLM_RETRY_SLEEP_SECONDS", DEFAULT_RETRY_SLEEP_SECONDS),
     )
-
 
 def get_litellm() -> Any:
     """Import LiteLLM or raise the same RuntimeError PromptHandler uses."""

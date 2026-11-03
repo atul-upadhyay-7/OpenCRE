@@ -83,6 +83,51 @@ class TestLiteLLMRouter(unittest.TestCase):
             "",
         )
 
+    def test_retry_policy_defaults(self) -> None:
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(litellm_router.retry_policy(), (2, 15))
+
+    def test_retry_policy_valid_env(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"CRE_LLM_MAX_RETRIES": "5", "CRE_LLM_RETRY_SLEEP_SECONDS": "20"},
+            clear=True,
+        ):
+            self.assertEqual(litellm_router.retry_policy(), (5, 20))
+
+    def test_retry_policy_invalid_values_fall_back_with_warning(self) -> None:
+        cases = [
+            ({"CRE_LLM_MAX_RETRIES": "abc"}, ("CRE_LLM_MAX_RETRIES",)),
+            ({"CRE_LLM_RETRY_SLEEP_SECONDS": "xyz"}, ("CRE_LLM_RETRY_SLEEP_SECONDS",)),
+            ({"CRE_LLM_MAX_RETRIES": ""}, ("CRE_LLM_MAX_RETRIES",)),
+            ({"CRE_LLM_RETRY_SLEEP_SECONDS": ""}, ("CRE_LLM_RETRY_SLEEP_SECONDS",)),
+            (
+                {"CRE_LLM_MAX_RETRIES": "abc", "CRE_LLM_RETRY_SLEEP_SECONDS": "xyz"},
+                ("CRE_LLM_MAX_RETRIES", "CRE_LLM_RETRY_SLEEP_SECONDS"),
+            ),
+        ]
+        for env, warned_names in cases:
+            with self.subTest(env=env):
+                with patch.dict(os.environ, env, clear=True):
+                    with self.assertLogs(
+                        "application.prompt_client.litellm_router", level="WARNING"
+                    ) as cm:
+                        result = litellm_router.retry_policy()
+                    self.assertEqual(result, (2, 15))
+                    for name in warned_names:
+                        self.assertTrue(
+                            any(name in line for line in cm.output),
+                            "missing warning for %s" % name,
+                        )
+
+    def test_retry_policy_negative_values_unchanged(self) -> None:
+        with patch.dict(
+            os.environ,
+            {"CRE_LLM_MAX_RETRIES": "-2", "CRE_LLM_RETRY_SLEEP_SECONDS": "-10"},
+            clear=True,
+        ):
+            self.assertEqual(litellm_router.retry_policy(), (-2, -10))
+
 
 if __name__ == "__main__":
     unittest.main()
